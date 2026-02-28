@@ -17,7 +17,7 @@ def get_week_start(d):
 def is_friday(d):
     return d.weekday() == 4
 
-# ---------------- SESSION ----------------
+# ---------------- SESSION INIT ----------------
 if "session" not in st.session_state:
     st.session_state.session = None
 
@@ -29,6 +29,9 @@ if "user_name" not in st.session_state:
 
 if "user_email" not in st.session_state:
     st.session_state.user_email = None
+
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
 
 # ---------------- LOGIN FUNCTION ----------------
 def login_user(email, password):
@@ -91,21 +94,24 @@ else:
         st.session_state.user_role = None
         st.session_state.user_name = None
         st.session_state.user_email = None
+        st.session_state.user_id = None
         st.rerun()
 
     st.success(f"Welcome {st.session_state.user_name}")
 
-    # ---------------- EMPLOYEE ----------------
+    # ================= EMPLOYEE =================
     if role == "employee":
 
+        # ---------- Dashboard ----------
         if page == "Dashboard":
+
             today = date.today()
             week_start = get_week_start(today)
             week_end = week_start + timedelta(days=6)
 
             res = supabase.table("timesheets") \
                 .select("hours") \
-                .eq("user_email", st.session_state.user_email) \
+                .eq("user_id", st.session_state.user_id) \
                 .gte("work_date", str(week_start)) \
                 .lte("work_date", str(week_end)) \
                 .execute()
@@ -117,6 +123,7 @@ else:
             col1.metric("This Week Hours", total)
             col2.metric("Utilization %", f"{utilization:.2f}%")
 
+        # ---------- Daily Entry ----------
         elif page == "Daily Entry":
 
             work_date = st.date_input("Work Date", date.today(), max_value=date.today())
@@ -132,7 +139,7 @@ else:
 
             if st.button("Save Entry"):
                 supabase.table("timesheets").insert({
-                    "user_email": st.session_state.user_email,
+                    "user_id": st.session_state.user_id,
                     "work_date": str(work_date),
                     "client": client,
                     "project": project,
@@ -145,13 +152,14 @@ else:
             if is_friday(date.today()):
                 if st.button("Submit Week"):
                     supabase.table("weekly_submissions").insert({
-                        "user_email": st.session_state.user_email,
+                        "user_id": st.session_state.user_id,
                         "week_start": str(week_start),
                         "status": "Submitted"
                     }).execute()
                     st.success("Week submitted")
                     st.rerun()
 
+        # ---------- Weekly Summary ----------
         elif page == "Weekly Summary":
 
             week_date = st.date_input("Select Week", date.today())
@@ -160,7 +168,7 @@ else:
 
             res = supabase.table("timesheets") \
                 .select("*") \
-                .eq("user_email", st.session_state.user_email) \
+                .eq("user_id", st.session_state.user_id) \
                 .gte("work_date", str(week_start)) \
                 .lte("work_date", str(week_end)) \
                 .execute()
@@ -170,9 +178,10 @@ else:
                 st.dataframe(df)
                 st.metric("Total Hours", df["hours"].sum())
 
-    # ---------------- ADMIN ----------------
+    # ================= ADMIN =================
     else:
 
+        # ---------- Dashboard ----------
         if page == "Dashboard":
 
             employees = supabase.table("profiles") \
@@ -189,6 +198,7 @@ else:
             col1.metric("Total Employees", len(employees.data))
             col2.metric("Pending Approvals", len(submissions.data))
 
+        # ---------- Manage Clients ----------
         elif page == "Manage Clients":
 
             new_client = st.text_input("Add Client")
@@ -198,6 +208,7 @@ else:
                 }).execute()
                 st.success("Client added")
 
+        # ---------- Approvals ----------
         elif page == "Approvals":
 
             res = supabase.table("weekly_submissions").select("*").execute()
@@ -206,6 +217,7 @@ else:
                 df = pd.DataFrame(res.data)
                 st.dataframe(df)
 
+        # ---------- Reports ----------
         elif page == "Reports":
 
             res = supabase.table("timesheets").select("*").execute()
