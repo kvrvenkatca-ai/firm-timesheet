@@ -29,6 +29,27 @@ if "user_email" not in st.session_state:
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
 
+query_params = st.query_params
+
+if "type" in query_params and query_params["type"][0] == "recovery":
+
+    st.subheader("Reset Password")
+
+    new_password = st.text_input("New Password", type="password")
+
+    if st.button("Update Password"):
+
+        try:
+            supabase.auth.update_user({
+                "password": new_password
+            })
+
+            st.success("Password updated. Please login.")
+            st.stop()
+
+        except Exception as e:
+            st.error("Password reset failed.")
+
 # ---------------- LOGIN FUNCTION ----------------
 def login_user(email, password):
 
