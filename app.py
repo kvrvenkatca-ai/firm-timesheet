@@ -4,6 +4,52 @@ from datetime import date, timedelta
 import pandas as pd
 import io
 
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(
+    page_title="Firm Timesheet System",
+    page_icon="📘",
+    layout="wide"
+)
+
+# ---------------- PURPLE UI STYLE ----------------
+st.markdown("""
+<style>
+
+.stApp {
+    background-color: #f6f2ff;
+}
+
+h1, h2, h3 {
+    color: #5b21b6;
+}
+
+.stButton>button {
+    background-color:#7c3aed;
+    color:white;
+    border-radius:8px;
+}
+
+.stButton>button:hover {
+    background-color:#6d28d9;
+}
+
+.stTextInput>div>div>input {
+    border-radius:8px;
+}
+
+.stSelectbox>div>div {
+    border-radius:8px;
+}
+
+.stMetric {
+    background-color:white;
+    padding:15px;
+    border-radius:10px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 # ---------------- SUPABASE CONNECTION ----------------
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -20,26 +66,32 @@ def is_friday(d):
 # ---------------- SESSION INIT ----------------
 if "session" not in st.session_state:
     st.session_state.session = None
+
 if "user_role" not in st.session_state:
     st.session_state.user_role = None
+
 if "user_name" not in st.session_state:
     st.session_state.user_name = None
+
 if "user_email" not in st.session_state:
     st.session_state.user_email = None
+
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
 
+# ---------------- PASSWORD RESET HANDLER ----------------
 query_params = st.query_params
 
 if "type" in query_params and query_params["type"][0] == "recovery":
 
-    st.subheader("Reset Password")
+    st.title("🔑 Reset Password")
 
     new_password = st.text_input("New Password", type="password")
 
     if st.button("Update Password"):
 
         try:
+
             supabase.auth.update_user({
                 "password": new_password
             })
@@ -47,67 +99,73 @@ if "type" in query_params and query_params["type"][0] == "recovery":
             st.success("Password updated. Please login.")
             st.stop()
 
-        except Exception as e:
-            st.error("Password reset failed.")
+        except Exception:
+            st.error("Password reset failed")
 
-# ---------------- LOGIN FUNCTION ----------------
+# ---------------- AUTH FUNCTIONS ----------------
 def login_user(email, password):
 
     try:
-        result = supabase.auth.sign_in_with_password({
+        response = supabase.auth.sign_in_with_password({
             "email": email,
             "password": password
         })
 
-        if result.user:
-
-            profile = supabase.table("profiles")\
-                .select("*")\
-                .eq("id", result.user.id)\
-                .single()\
-                .execute()
-
-            if not profile.data["active"]:
-                return "inactive"
-
-        return result
+        return response
 
     except Exception:
         return None
 
-# ---------------- UI ----------------
-st.title("📘 Firm Timesheet System (Cloud)")
 
-# ---------------- PASSWORD RESET HANDLER ----------------
-query_params = st.query_params
+def signup_user(name, email, password):
 
-if "type" in query_params and query_params["type"] == "recovery":
+    try:
 
-    st.subheader("Set New Password")
+        response = supabase.auth.sign_up({
+            "email": email,
+            "password": password
+        })
 
-    new_password = st.text_input("New Password", type="password")
-    confirm_password = st.text_input("Confirm Password", type="password")
+        if response.user:
 
-    if st.button("Update Password"):
+            supabase.table("profiles").insert({
+                "id": response.user.id,
+                "email": email,
+                "name": name,
+                "role": "employee"
+            }).execute()
 
-        if new_password != confirm_password:
-            st.error("Passwords do not match")
-        else:
-            try:
-                supabase.auth.update_user({
-                    "password": new_password
-                })
-                st.success("Password updated successfully. Please login.")
-                st.stop()
-            except Exception:
-                st.error("Password update failed")
+        return True
 
-# ---------------- AUTH ----------------
+    except Exception:
+        return False
+
+
+def send_reset(email):
+
+    try:
+
+        supabase.auth.reset_password_for_email(
+            email,
+            {
+                "redirect_to": st.secrets["APP_URL"]
+            }
+        )
+
+        return True
+
+    except Exception:
+        return False
+
+# ---------------- TITLE ----------------
+st.title("📘 Firm Timesheet System")
+
+# ---------------- LOGIN / SIGNUP UI ----------------
 if not st.session_state.session:
 
-    tab1, tab2, tab3 = st.tabs(["Login","Register","Reset Password"])
+    tab1, tab2, tab3 = st.tabs(["Login", "Create Account", "Forgot Password"])
 
-    # LOGIN
+    # ---------------- LOGIN ----------------
     with tab1:
 
         email = st.text_input("Email")
@@ -115,11 +173,7 @@ if not st.session_state.session:
 
         if st.button("Login"):
 
-            result = login_user(email,password)
-
-            if result == "inactive":
-                st.error("Account deactivated. Contact admin.")
-                st.stop()
+            result = login_user(email, password)
 
             if result and result.user:
 
@@ -127,54 +181,54 @@ if not st.session_state.session:
                 st.session_state.user_email = result.user.email
                 st.session_state.user_id = result.user.id
 
-                profile = supabase.table("profiles")\
-                    .select("*")\
-                    .eq("id",result.user.id)\
-                    .single()\
+                profile = supabase.table("profiles") \
+                    .select("*") \
+                    .eq("id", result.user.id) \
+                    .single() \
                     .execute()
 
-                st.session_state.user_role = profile.data["role"]
-                st.session_state.user_name = profile.data["name"]
+                if profile.data:
 
-                st.rerun()
+                    st.session_state.user_role = profile.data["role"]
+                    st.session_state.user_name = profile.data["name"]
+
+                    st.rerun()
+
+                else:
+                    st.error("Profile missing. Contact admin.")
 
             else:
-                st.error("Invalid credentials")
+                st.error("Invalid login")
 
-    # REGISTER
+    # ---------------- SIGNUP ----------------
     with tab2:
 
-        name = st.text_input("Full Name")
-        email = st.text_input("Email", key="reg_email")
-        password = st.text_input("Password", type="password", key="reg_pwd")
+        name = st.text_input("Name")
+        email = st.text_input("Email ", key="signup_email")
+        password = st.text_input("Password ", type="password")
 
         if st.button("Create Account"):
 
-            res = supabase.auth.sign_up({
-                "email": email,
-                "password": password
-            })
+            ok = signup_user(name, email, password)
 
-            if res.user:
+            if ok:
+                st.success("Account created. Please login.")
+            else:
+                st.error("Signup failed")
 
-                supabase.table("profiles").insert({
-                    "id": res.user.id,
-                    "email": email,
-                    "name": name,
-                    "role": "employee",
-                    "active": True
-                }).execute()
-
-                st.success("Account created. Verify email.")
-
-    # PASSWORD RESET
+    # ---------------- FORGOT PASSWORD ----------------
     with tab3:
 
-        email = st.text_input("Enter email")
+        email = st.text_input("Enter your email")
 
         if st.button("Send Reset Link"):
-            supabase.auth.reset_password_email(email)
-            st.success("Password reset email sent")
+
+            ok = send_reset(email)
+
+            if ok:
+                st.success("Password reset link sent.")
+            else:
+                st.error("Failed to send reset email")
 
 # ---------------- MAIN APP ----------------
 else:
@@ -184,144 +238,146 @@ else:
     role = st.session_state.user_role
 
     if role == "employee":
-        page = st.sidebar.radio("Go To",
-        ["Dashboard","Daily Entry","Weekly Summary"])
+
+        page = st.sidebar.radio(
+            "Go To",
+            ["Dashboard", "Daily Entry", "Weekly Summary"]
+        )
 
     else:
-        page = st.sidebar.radio("Go To",
-        ["Dashboard","Manage Clients","Approvals","Reports","Employee Management"])
+
+        page = st.sidebar.radio(
+            "Go To",
+            ["Dashboard", "Manage Clients", "Approvals", "Reports"]
+        )
 
     if st.sidebar.button("Logout"):
+
         supabase.auth.sign_out()
-        st.session_state.session=None
+
+        st.session_state.session = None
+        st.session_state.user_role = None
+        st.session_state.user_name = None
+        st.session_state.user_email = None
+        st.session_state.user_id = None
+
         st.rerun()
 
     st.success(f"Welcome {st.session_state.user_name}")
 
-# ---------------- EMPLOYEE ----------------
+    # ---------------- EMPLOYEE ----------------
     if role == "employee":
 
         if page == "Dashboard":
 
-            today=date.today()
-            ws=get_week_start(today)
-            we=ws+timedelta(days=6)
+            today = date.today()
+            week_start = get_week_start(today)
+            week_end = week_start + timedelta(days=6)
 
-            res=supabase.table("timesheets")\
-                .select("hours")\
-                .eq("user_id",st.session_state.user_id)\
-                .gte("work_date",str(ws))\
-                .lte("work_date",str(we))\
+            res = supabase.table("timesheets") \
+                .select("hours") \
+                .eq("user_id", st.session_state.user_id) \
+                .gte("work_date", str(week_start)) \
+                .lte("work_date", str(week_end)) \
                 .execute()
 
-            total=sum(r["hours"] for r in res.data)
+            total = sum(r["hours"] for r in res.data)
 
-            util=(total/45)*100
+            utilization = (total / 45) * 100
 
-            c1,c2=st.columns(2)
+            c1, c2 = st.columns(2)
 
-            c1.metric("Week Hours",total)
-            c2.metric("Utilization",f"{util:.1f}%")
+            c1.metric("Week Hours", total)
+            c2.metric("Utilization", f"{utilization:.2f}%")
 
-        if page=="Daily Entry":
+        if page == "Daily Entry":
 
-            d=st.date_input("Work Date",date.today())
+            work_date = st.date_input("Work Date", date.today())
 
-            clients=supabase.table("clients").select("client_name").execute().data
-            client=[c["client_name"] for c in clients]
+            clients = supabase.table("clients").select("client_name").execute().data
 
-            client_sel=st.selectbox("Client",client)
-            project=st.text_input("Project")
-            desc=st.text_area("Description")
-            hrs=st.number_input("Hours",0.0,9.0,step=0.5)
+            client_list = [c["client_name"] for c in clients]
 
-            if st.button("Save"):
+            client = st.selectbox("Client", client_list)
+
+            project = st.text_input("Project")
+
+            description = st.text_area("Description")
+
+            hours = st.number_input("Hours", 0.0, 9.0, step=0.5)
+
+            if st.button("Save Entry"):
 
                 supabase.table("timesheets").insert({
-                    "user_id":st.session_state.user_id,
-                    "work_date":str(d),
-                    "client":client_sel,
-                    "project":project,
-                    "description":desc,
-                    "hours":hrs
+                    "user_id": st.session_state.user_id,
+                    "work_date": str(work_date),
+                    "client": client,
+                    "project": project,
+                    "description": description,
+                    "hours": hours
                 }).execute()
 
                 st.success("Saved")
 
-        if page=="Weekly Summary":
+                st.rerun()
 
-            res=supabase.table("timesheets")\
-                .select("*")\
-                .eq("user_id",st.session_state.user_id)\
+        if page == "Weekly Summary":
+
+            res = supabase.table("timesheets") \
+                .select("*") \
+                .eq("user_id", st.session_state.user_id) \
                 .execute()
 
             if res.data:
-                df=pd.DataFrame(res.data)
+
+                df = pd.DataFrame(res.data)
+
                 st.dataframe(df)
 
-# ---------------- ADMIN ----------------
-    if role=="admin":
+                st.metric("Total Hours", df["hours"].sum())
 
-        if page=="Dashboard":
+    # ---------------- ADMIN ----------------
+    else:
 
-            emps=supabase.table("profiles")\
-                .select("*")\
-                .eq("role","employee")\
+        if page == "Dashboard":
+
+            employees = supabase.table("profiles") \
+                .select("*") \
+                .eq("role", "employee") \
                 .execute()
 
-            st.metric("Total Employees",len(emps.data))
+            c1, c2 = st.columns(2)
 
-        if page=="Manage Clients":
+            c1.metric("Employees", len(employees.data))
 
-            nc=st.text_input("New Client")
+        if page == "Manage Clients":
+
+            new_client = st.text_input("Add Client")
 
             if st.button("Add Client"):
 
                 supabase.table("clients").insert({
-                    "client_name":nc
+                    "client_name": new_client
                 }).execute()
 
-                st.success("Client added")
+                st.success("Client Added")
 
-        if page=="Reports":
+        if page == "Reports":
 
-            res=supabase.table("timesheets").select("*").execute()
-
-            if res.data:
-                df=pd.DataFrame(res.data)
-                st.dataframe(df)
-
-        # ---------------- EMPLOYEE MANAGEMENT ----------------
-        if page=="Employee Management":
-
-            st.subheader("Employees")
-
-            res=supabase.table("profiles")\
-                .select("*")\
-                .eq("role","employee")\
-                .execute()
+            res = supabase.table("timesheets").select("*").execute()
 
             if res.data:
 
-                df=pd.DataFrame(res.data)
+                df = pd.DataFrame(res.data)
+
                 st.dataframe(df)
 
-                emp=st.selectbox("Select Employee",
-                df["email"])
+                buffer = io.BytesIO()
 
-                reason=st.text_area("Removal Reason")
+                df.to_excel(buffer, index=False)
 
-                eff_date=st.date_input("Effective Date")
-
-                if st.button("Deactivate Employee"):
-
-                    supabase.table("profiles")\
-                        .update({
-                        "active":False,
-                        "removal_reason":reason,
-                        "removal_date":str(eff_date)
-                        })\
-                        .eq("email",emp)\
-                        .execute()
-
-                    st.success("Employee deactivated")
+                st.download_button(
+                    "Download Excel",
+                    buffer.getvalue(),
+                    file_name="timesheet.xlsx"
+                )
